@@ -23,31 +23,14 @@ import torch
 class LibraryTerm:
     """One column of Theta(X)."""
 
-    kind: str  # "poly" | "sin" | "cos"
-    exponents: tuple[int, ...] | None = None  # for "poly": exponent per state dim
-    index: int | None = None  # for "sin"/"cos": which state dim
-    freq: float | None = None  # for "sin"/"cos": angular frequency
+    kind: str  
+    exponents: tuple[int, ...] | None = None  
+    index: int | None = None 
+    freq: float | None = None  
 
 
 @dataclass
 class FeatureLibrary:
-    """Builds the candidate function library Theta(X) for SINDy.
-
-    Columns are, in order:
-      1. the constant term,
-      2. all monomials in the state variables of degree 1..poly_degree
-         (e.g. for state (x, y, z) and poly_degree=2: x, y, z, x^2, xy, xz,
-         y^2, yz, z^2), enumerated as multisets so each distinct monomial
-         appears exactly once,
-      3. if include_trig: sin(freq * x_i) and cos(freq * x_i) for every
-         state dim i and every freq in trig_freqs.
-
-    Args:
-        state_names: names of the state dimensions, e.g. ("x", "y", "z").
-        poly_degree: highest total polynomial degree to include (>= 0).
-        include_trig: whether to append sin/cos terms of each state variable.
-        trig_freqs: angular frequencies to use for the trig terms.
-    """
 
     state_names: Sequence[str]
     poly_degree: int = 3
@@ -81,7 +64,7 @@ class FeatureLibrary:
         return len(self._terms)
 
     def names(self) -> list[str]:
-        """Human-readable name for each library column, e.g. ['1', 'x', 'y', ..., 'x^2', 'xy', ...]."""
+        
         out = []
         for term in self._terms:
             if term.kind == "poly":
@@ -102,14 +85,7 @@ class FeatureLibrary:
         return " ".join(parts)
 
     def transform(self, X: torch.Tensor) -> torch.Tensor:
-        """Evaluate Theta(X).
-
-        Args:
-            X: [n_time, n_dims] state trajectory, n_dims == len(state_names).
-
-        Returns:
-            Theta: [n_time, n_terms] feature matrix.
-        """
+       
         if X.dim() != 2 or X.shape[1] != len(self.state_names):
             raise ValueError(
                 f"expected X of shape [n_time, {len(self.state_names)}], got {tuple(X.shape)}"
