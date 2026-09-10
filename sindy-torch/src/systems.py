@@ -37,7 +37,6 @@ class DynamicalSystem:
         return self.rhs(t, x, self.params)
 
     def true_equations(self) -> list[str]:
-        """Ground-truth dx_i/dt equations as strings, for display/comparison."""
         return self.true_equations_fn(self.params)
 
     def simulate(
@@ -49,12 +48,6 @@ class DynamicalSystem:
         rtol: float = 1e-10,
         atol: float = 1e-10,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Integrate the system on a uniform time grid.
-
-        Returns:
-            t: [n_time] float64 tensor of sample times.
-            X: [n_time, state_dim] float64 tensor of states at those times.
-        """
         t_eval = np.arange(t_span[0], t_span[1], dt)
         sol = solve_ivp(
             self.f,
@@ -104,11 +97,7 @@ def lorenz(sigma: float = 10.0, rho: float = 28.0, beta: float = 8.0 / 3.0) -> D
 
 
 def van_der_pol(mu: float = 2.0) -> DynamicalSystem:
-    """The Van der Pol oscillator, in (position, velocity) form.
 
-    dx/dt = y
-    dy/dt = mu (1 - x^2) y - x
-    """
     params = {"mu": mu}
 
     def rhs(t: float, x: np.ndarray, p: dict) -> np.ndarray:
@@ -133,7 +122,6 @@ def van_der_pol(mu: float = 2.0) -> DynamicalSystem:
 
 
 def rossler(a: float = 0.2, b: float = 0.2, c: float = 5.7) -> DynamicalSystem:
-    """The Rossler system. Chaotic for the classic (a, b, c) above."""
     params = {"a": a, "b": b, "c": c}
 
     def rhs(t: float, x: np.ndarray, p: dict) -> np.ndarray:
