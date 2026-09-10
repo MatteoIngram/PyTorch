@@ -23,6 +23,8 @@ import numpy as np
 import torch
 from scipy.integrate import solve_ivp
 
+from .sindy import FeatureLibrary
+
 
 @dataclass
 class DynamicalSystem:
@@ -32,12 +34,38 @@ class DynamicalSystem:
     params: dict[str, float]
     rhs: Callable[[float, np.ndarray, dict], np.ndarray]
     true_equations_fn: Callable[[dict], list[str]]
+    true_coefficients_fn: Callable[[dict], list[dict[str, float]]]
 
     def f(self, t: float, x: np.ndarray) -> np.ndarray:
         return self.rhs(t, x, self.params)
 
     def true_equations(self) -> list[str]:
+        """Ground-truth dx_i/dt equations as strings, for display/comparison."""
         return self.true_equations_fn(self.params)
+
+    def true_Xi(self, library: FeatureLibrary) -> torch.Tensor:
+        """Ground-truth coefficient matrix, aligned to `library`'s term ordering.
+
+        Lets discovered Xi be compared numerically (not just by eyeballing
+        printed equations) against the true dynamics, for any feature
+        library that is a superset of the true active terms.
+
+        Raises:
+            ValueError: if a true term isn't present in `library` (e.g.
+                `poly_degree` set too low to contain a cubic true term).
+        """
+        name_to_idx = {name: i for i, name in enumerate(library.names())}
+        coeff_dicts = self.true_coefficients_fn(self.params)
+        Xi = torch.zeros(library.n_terms, self.state_dim, dtype=torch.float64)
+        for j, coeffs in enumerate(coeff_dicts):
+            for term_name, value in coeffs.items():
+                if term_name not in name_to_idx:
+                    raise ValueError(
+                        f"true term '{term_name}' not found in library "
+                        f"(library terms: {library.names()})"
+                    )
+                Xi[name_to_idx[term_name], j] = value
+        return Xi
 
     def simulate(
         self,
@@ -48,6 +76,12 @@ class DynamicalSystem:
         rtol: float = 1e-10,
         atol: float = 1e-10,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Integrate the system on a uniform time grid.
+
+        Returns:
+            t: [n_time] float64 tensor of sample times.
+            X: [n_time, state_dim] float64 tensor of states at those times.
+        """
         t_eval = np.arange(t_span[0], t_span[1], dt)
         sol = solve_ivp(
             self.f,
@@ -86,6 +120,13 @@ def lorenz(sigma: float = 10.0, rho: float = 28.0, beta: float = 8.0 / 3.0) -> D
             f"dz/dt = {-p['beta']:.3f} z + 1.000 x y",
         ]
 
+    def true_coefficients(p: dict) -> list[dict[str, float]]:
+        return [
+            {"x": -p["sigma"], "y": p["sigma"]},
+            {"x": p["rho"], "y": -1.0, "x z": -1.0},
+            {"z": -p["beta"], "x y": 1.0},
+        ]
+
     return DynamicalSystem(
         name="lorenz",
         state_dim=3,
@@ -93,11 +134,16 @@ def lorenz(sigma: float = 10.0, rho: float = 28.0, beta: float = 8.0 / 3.0) -> D
         params=params,
         rhs=rhs,
         true_equations_fn=true_equations,
+        true_coefficients_fn=true_coefficients,
     )
 
 
 def van_der_pol(mu: float = 2.0) -> DynamicalSystem:
+    """The Van der Pol oscillator, in (position, velocity) form.
 
+    dx/dt = y
+    dy/dt = mu (1 - x^2) y - x
+    """
     params = {"mu": mu}
 
     def rhs(t: float, x: np.ndarray, p: dict) -> np.ndarray:
@@ -111,6 +157,13 @@ def van_der_pol(mu: float = 2.0) -> DynamicalSystem:
             f"dy/dt = -1.000 x + {mu:.3f} y - {mu:.3f} x^2 y",
         ]
 
+    def true_coefficients(p: dict) -> list[dict[str, float]]:
+        mu = p["mu"]
+        return [
+            {"y": 1.0},
+            {"x": -1.0, "y": mu, "x^2 y": -mu},
+        ]
+
     return DynamicalSystem(
         name="van_der_pol",
         state_dim=2,
@@ -118,10 +171,12 @@ def van_der_pol(mu: float = 2.0) -> DynamicalSystem:
         params=params,
         rhs=rhs,
         true_equations_fn=true_equations,
+        true_coefficients_fn=true_coefficients,
     )
 
 
 def rossler(a: float = 0.2, b: float = 0.2, c: float = 5.7) -> DynamicalSystem:
+    """The Rossler system. Chaotic for the classic (a, b, c) above."""
     params = {"a": a, "b": b, "c": c}
 
     def rhs(t: float, x: np.ndarray, p: dict) -> np.ndarray:
@@ -141,6 +196,13 @@ def rossler(a: float = 0.2, b: float = 0.2, c: float = 5.7) -> DynamicalSystem:
             f"dz/dt = {p['b']:.3f} + 1.000 x z - {p['c']:.3f} z",
         ]
 
+    def true_coefficients(p: dict) -> list[dict[str, float]]:
+        return [
+            {"y": -1.0, "z": -1.0},
+            {"x": 1.0, "y": p["a"]},
+            {"1": p["b"], "x z": 1.0, "z": -p["c"]},
+        ]
+
     return DynamicalSystem(
         name="rossler",
         state_dim=3,
@@ -148,6 +210,7 @@ def rossler(a: float = 0.2, b: float = 0.2, c: float = 5.7) -> DynamicalSystem:
         params=params,
         rhs=rhs,
         true_equations_fn=true_equations,
+        true_coefficients_fn=true_coefficients,
     )
 
 
